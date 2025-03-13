@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sat Aug 17 20:26:07 2024
+Created on Mon Mar  3 12:48:55 2025
 
 @author: 20224695
 """
@@ -90,10 +90,78 @@ for K in K_range:
             for p in p_range:
                 for s in s_range:
                     for lambda_c in lambda_c_range:
+                        start_time = time.time()
+                        R_alt = np.zeros((I + 1, L + 1, num_actions))
+                        for i in range(I + 1):
+                            for l in range(L + 1):
+                                for a in range(num_actions):
+                                    if a == 1:
+                                        R_alt[i, l, a] = - K + s * i + p * (sum(k * arrival_probability(L, k) for k in range(I))) + arr_greater_than(L, I - 1) * I * p
+                                    else:
+                                        R_alt[i, l, a] = p * (sum(k * arrival_probability(l, k) for k in range(i))) + arr_greater_than(l, i - 1) * i * p
+                        print('Heuristic rewards completed')
+                        # Transition probability matrix
+                        P_alt = np.zeros((I + 1, L + 1, num_actions, I + 1, L + 1))
+                        for i in range(I + 1):
+                            for l in range(L + 1):
+                                if i == 0 and l == 0:
+                                    P_alt[i, l, 0, i, l] = 1
+                                    P_alt[i, l, 1, I, L] = 1
+                                elif i == 0 and l != 0:
+                                    P_alt[i, l, 0, i, l - 1] = 1
+                                    for k in range(I+1):
+                                        P_alt[i, l, 1, I - k, L - 1] = arrival_probability(L, k)
+                                    P_alt[i, l, 1, 0, L - 1] = arr_greater_than(L, I - 1)
+                                elif i != 0 and l == 0:
+                                    P_alt[i, l, 0, i, l] = 1
+                                    for k in range(I+1):
+                                        P_alt[i, l, 1, I - k, L - 1] = arrival_probability(L, k)
+                                    P_alt[i, l, 1, 0, L - 1] = arr_greater_than(L, I - 1)
+                                else:
+                                    for k in range(I+1):
+                                        P_alt[i, l, 1, I - k, L - 1] = arrival_probability(L, k)
+                                    P_alt[i, l, 1, 0, L - 1] = arr_greater_than(L, I - 1)
+                                    
+                                    for k in range(i+1):
+                                        P_alt[i, l, 0, i - k, l - 1] = arrival_probability(l, k)
+                                    P_alt[i, l, 0, 0, l - 1] = arr_greater_than(l, i - 1)
+                                    
+                                        
+                        print('Probabilities completed')                   
+                        
+                        # Value iteration parameters
+                        
+                        V_alt = np.zeros((I+1,L+1))
+                        V_actions_alt = np.zeros((I + 1, L + 1, num_actions))
+                        
+                        # Value iteration
+                        iteration = 0
+                        while True:
+                            V_prev_alt = np.copy(V_alt)
+                            iteration += 1
+                            for i in range(I + 1):
+                                for l in range(L + 1):
+                                    for a in range(num_actions):
+                                        if (i == 0 or l == 0) and a == 0:
+                                            V_actions_alt[i, l, a] = -float('inf')
+                                        else:
+                                            V_actions_alt[i, l, a] = R_alt[i, l, a] + gamma * np.sum(P_alt[i, l, a] * V_prev_alt)
+                                            
+                            V_alt = np.max(V_actions_alt, axis = 2)
+                            
+                            if np.max(np.abs(V_alt - V_prev_alt)) < epsilon:
+                                print('Value iteration completed at iteration: ', iteration)
+                                break
+                        
+                        heuristic_alt_policy = np.argmax(V_actions_alt, axis = 2)
+                        heuristic_alt_policy = np.repeat(heuristic_alt_policy[:, :, np.newaxis], L+1, axis=2)
+                        end_time = time.time()
+                        total_time = end_time - start_time
+                        # Calculate heuristic average reward
+                        
                         for P_b in P_b_range:
+                            
                             case += 1
-                            if case < 1013:
-                                continue
                             # Reward array
                             R = np.zeros((I + 1, L + 1, L + 1, num_actions))
                             for i in range(I + 1):
@@ -149,75 +217,26 @@ for K in K_range:
                                                 for k in range(i+1):
                                                     P[i, l, l_b, 0, i - k, l - 1, l_b] = arrival_probability(l, k)*(1 - P_b)
                                                 P[i, l, l_b, 0, 0, l - 1, l_b] = arr_greater_than(l, i - 1)*(1 - P_b)
-                            print('Probabilities completed')                   
+                            print('Probabilities completed')
                             
-                            # Value iteration parameters
+                            stationary_dist = calculate_stationary_distribution(P, heuristic_alt_policy, I, L)
                             
-                            V = np.zeros((I+1,L+1, L+1))
-                            V_actions = np.zeros((I + 1, L + 1, L + 1 , num_actions))
-                            
-                            # Value iteration
-                            iteration = 0
-                            while True:
-                                V_prev = np.copy(V)
-                                iteration += 1
-                                for i in range(I + 1):
-                                    for l in range(L + 1):
-                                        for l_b in range(L + 1):
-                                            if l >= l_b:
-                                                continue
-                                            else:
-                                                for a in range(num_actions):
-                                                    if (i == 0 or l == 0) and a == 0:
-                                                        V_actions[i, l, l_b, a] = -float('inf')
-                                                    else:
-                                                        V_actions[i, l, l_b, a] = R[i, l, l_b, a] + gamma * np.sum(P[i, l, l_b, a] * V_prev)
-                                                
-                                V = np.max(V_actions, axis = 3)
-                                
-                                if np.max(np.abs(V - V_prev)) < epsilon:
-                                    print('Value iteration completed at iteration: ', iteration)
-                                    break
-                                
-                            optimal_policy = np.argmax(V_actions, axis = 3)
-                            
-
-                            # Calculate optimal average reward
-                            
-                            stationary_dist = calculate_stationary_distribution(P, optimal_policy, I, L)
-                            
-                            # optimal_avg_reward = 0
-                            # for i in range(I+1):
-                            #     for l in range(L+1):
-                            #         for l_b in range(L+1):
-                            #             if l >= l_b:
-                            #                 continue
-                            #             else:
-                            #                 optimal_avg_reward += R[i, l, l_b, optimal_policy[i, l, l_b]] * stationary_dist[i, l, l_b]
-                            
-                            # avg_lifetime = 0
-                            # for i in range(I+1):
-                            #     for l in range(L+1):
-                            #         for l_b in range(L+1):
-                            #             avg_lifetime = avg_lifetime + stationary_dist[i, l, l_b]*((i*l + l_b*I)/(i + I))
-                            
-                            # avg_inventory = 0
-                            # for i in range(I+1):
-                            #     for l in range(L+1):
-                            #         for l_b in range(L+1):
-                            #             avg_inventory = avg_inventory + stationary_dist[i, l, l_b]*(i)
-                            
-                            # shelf_lifetime = 0
-                            # for i in range(I+1):
-                            #     for l in range(L+1):
-                            #         for l_b in range(L+1):
-                            #             shelf_lifetime = shelf_lifetime + stationary_dist[i, l, l_b]*(l)
-                            avg_waste = 0
+                            heuristic_avg_rew = 0
                             for i in range(I+1):
                                 for l in range(L+1):
                                     for l_b in range(L+1):
-                                    
-                                        avg_waste = avg_waste + stationary_dist[i, l, l_b]*(l)
+                                        heuristic_avg_rew += R[i, l, l_b, heuristic_alt_policy[i, l]] * stationary_dist[i, l, l_b]
+                            
+                        
+                            avg_inventory = 0
+                            for i in range(I+1):
+                                for l in range(L+1):
+                                    avg_inventory = avg_inventory + stationary_dist[i, l]*(i)
+                            
+                            shelf_lifetime = 0
+                            for i in range(I+1):
+                                for l in range(L+1):
+                                    shelf_lifetime = shelf_lifetime + stationary_dist[i, l]*(l)
                             
                             # Record results
                             results.append({
@@ -228,14 +247,14 @@ for K in K_range:
                                 "s": s,
                                 "lambda_c": lambda_c,
                                 "P_b": P_b,
-                                # "Avg_lifetime": avg_lifetime,
-                                # 'Avg_inventory': avg_inventory,
-                                # 'Avg_shelf_lifetime': shelf_lifetime,
-                                "avg_waste": avg_waste,
+                                'Heuristic_avg': heuristic_avg_rew,
+                                'Avg_inventory': avg_inventory,
+                                'Avg_shelf_lifetime': shelf_lifetime,
+                                'Total_time': total_time,
                             })
                            
                             print(case)
 
 # # Convert results to DataFrame and export to Excel
 df = pd.DataFrame(results)
-df.to_excel("averages_2.xlsx", index=False)
+df.to_excel("averages_heuristic.xlsx", index=False)

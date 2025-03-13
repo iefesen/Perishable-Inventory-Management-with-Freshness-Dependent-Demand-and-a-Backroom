@@ -2,21 +2,23 @@ import numpy as np
 from scipy.stats import poisson
 from scipy import linalg
 import matplotlib.pyplot as plt
+import time
 
-
+start_time = time.time()
 num_actions = 2
-
 epsilon = 1e-6
 gamma = 0.99
 
 # Parameters
-K = 100
-I = 20
-L = 10
+K = 240
+I = 26
+L = 7
 p = 15
-lambda_c = 12
-P_b = 0.1
+lambda_c = 16
+P_b = 0
 
+
+max_iterations = 10000
 # Arrival probability functions
 def arrival_probability(L_i, k):
     arr = lambda_c * (L_i / L)
@@ -73,123 +75,6 @@ def calculate_stationary_distribution(P, policy, I, L):
     
     return stationary_dist_shaped
 
-# Reward array
-R = np.zeros((2*I + 1, L + 1, L + 1, num_actions))
-for i in range(2*I + 1):
-    for l in range(L + 1):
-        for l_b in range(L + 1):
-            for a in range(num_actions):
-                if a == 1 and i != 0 and l != 0:
-                    R[i, l, l_b, a] = - K + p * (sum(k * arrival_probability(round((I*l_b + i*l)/(I+i)), k) for k in range(I + i))) + arr_greater_than(round((I*l_b + i*l)/(I+i)), I + i - 1) * (I + i) * p
-                elif a == 1 and (i == 0 or l == 0):
-                    R[i, l, l_b, a] = - K + p * (sum(k * arrival_probability(l_b, k) for k in range(I))) + arr_greater_than(l_b, I - 1) * (I) * p                    
-                else:
-                    R[i, l, l_b, a] = p * (sum(k * arrival_probability(l, k) for k in range(i))) + arr_greater_than(l, i - 1) * i * p
-
-print('Rewards completed')
-
-P = np.zeros((2*I + 1, L + 1, L + 1, num_actions, 2*I + 1, L + 1, L + 1))
-for i in range(2*I + 1):
-    for l in range(L + 1):
-        for l_b in range(L + 1):
-            if l_b <= l and l != 0:
-                continue
-            else:
-                if i == 0 and l == 0 and l_b == 0:
-                    P[i, l, l_b, 0, i, l, l_b] = 1
-                    P[i, l, l_b, 1, i, l, L] = 1
-                elif i == 0 and l == 0 and l_b != 0:
-                    P[i, l, l_b, 0, i, l, l_b - 1] = P_b
-                    P[i, l, l_b, 0, i, l, l_b] = 1 - P_b
-                    for k in range(I+1):    
-                        P[i, l, l_b, 1, I - k, l_b - 1, L] = arrival_probability(l_b, k)
-                    P[i, l, l_b, 1, 0, l_b - 1, L] = arr_greater_than(l_b, I - 1)
-                elif i == 0 and l != 0 and l_b != 0:
-                    P[i, l, l_b, 0, i, l - 1, l_b - 1] = P_b
-                    P[i, l, l_b, 0, i, l - 1, l_b] = 1 - P_b
-                    for k in range(I+1):    
-                        P[i, l, l_b, 1, I - k, l_b - 1, L] = arrival_probability(l_b, k)
-                    P[i, l, l_b, 1, 0, l_b - 1, L] = arr_greater_than(l_b, I - 1)
-                elif i != 0 and l == 0 and l_b == 0:
-                    P[i, l, l_b, 0, i, l, l_b] = 1
-                    P[i, l, l_b, 1, I, l_b, L] = 1
-                elif i != 0 and l == 0 and l_b != 0:
-                    P[i, l, l_b, 0, i, l, l_b - 1] = P_b
-                    P[i, l, l_b, 0, i, l, l_b] = 1 - P_b
-                    for k in range(I+1):
-                        P[i, l, l_b, 1, I - k, l_b - 1, L] = arrival_probability(l_b, k)
-                    P[i, l, l_b, 1, 0, l_b - 1, L] = arr_greater_than(l_b, I - 1)
-                elif i < I:
-                    for k in range(I + i + 1):
-                        P[i, l, l_b, 1, I + i - k, round((I*l_b + i*l)/(I+i)) - 1, L] = arrival_probability(round((I*l_b + i*l)/(I+i)), k)
-                    P[i, l, l_b, 1, 0, l_b - 1, L] = arr_greater_than(round((I*l_b + i*l)/(I+i)), I + i - 1)
-
-                    for k in range(i+1):
-                        P[i, l, l_b, 0, i - k, l - 1, l_b - 1] = arrival_probability(l, k)*P_b
-                    P[i, l, l_b, 0, 0, l - 1, l_b - 1] = arr_greater_than(l, i - 1)*P_b
-                    
-                    for k in range(i+1):
-                        P[i, l, l_b, 0, i - k, l - 1, l_b] = arrival_probability(l, k)*(1 - P_b)
-                    P[i, l, l_b, 0, 0, l - 1, l_b] = arr_greater_than(l, i - 1)*(1 - P_b)
-                else:
-                    for k in range(i+1):
-                        P[i, l, l_b, 0, i - k, l - 1, l_b - 1] = arrival_probability(l, k)*P_b
-                    P[i, l, l_b, 0, 0, l - 1, l_b - 1] = arr_greater_than(l, i - 1)*P_b
-                    
-                    for k in range(i+1):
-                        P[i, l, l_b, 0, i - k, l - 1, l_b] = arrival_probability(l, k)*(1 - P_b)
-                    P[i, l, l_b, 0, 0, l - 1, l_b] = arr_greater_than(l, i - 1)*(1 - P_b)
-
-print('Probabilities completed')                   
-
-# Value Iteration Algorithm
-
-def value_iteration(R, P, gamma=0.9, epsilon=1e-2, max_iterations=1000):
-    V = np.zeros((2*I + 1, L + 1, L + 1))  # Initialize value function
-    policy = np.zeros((2*I + 1, L + 1, L + 1), dtype=int)  # Initialize policy
-    action_values_store = np.zeros((2*I + 1, L + 1, L + 1, num_actions))
-    
-    for iteration in range(max_iterations):
-        delta = 0
-        new_V = np.copy(V)
-        for i in range(2*I + 1):
-            for l in range(L + 1):
-                for l_b in range(L + 1):
-                    if l >= l_b:
-                        continue  # Skip invalid states
-                    
-                    action_values = np.zeros(num_actions)
-                    
-                    for a in range(num_actions):
-                        # Enforce action constraints
-                        if (a == 1 and i > I) or (a == 0 and (i == 0 or l == 0)):
-                            continue
-                        
-                        value_sum = 0
-                        
-                        for i_next in range(2*I + 1):
-                            for l_next in range(L + 1):
-                                for l_b_next in range(L + 1):
-                                    prob = P[i, l, l_b, a, i_next, l_next, l_b_next]
-                                    value_sum += prob * (R[i, l, l_b, a] + gamma * V[i_next, l_next, l_b_next])
-                        
-                        action_values[a] = value_sum
-                    
-                    action_values_store[i, l, l_b] = action_values
-                    best_action = np.argmax(action_values)
-                    new_V[i, l, l_b] = action_values[best_action]
-                    policy[i, l, l_b] = best_action
-                    delta = max(delta, abs(new_V[i, l, l_b] - V[i, l, l_b]))
-        
-        V = new_V
-        if delta < epsilon:
-            break
-    
-    return V, policy, action_values_store
-
-# Run value iteration
-optimal_values, optimal_policy, action_values_store = value_iteration(R, P, gamma, epsilon)
-
 # Plot for l_b
 def plot_optimal_policy(optimal_policy, I, L):
     for l_b in range(L+1):
@@ -216,28 +101,210 @@ def plot_optimal_policy(optimal_policy, I, L):
         plt.grid(True, which='both', linestyle='--', linewidth=0.5)
         plt.show()
 
-# Call the plot function
-plot_optimal_policy(optimal_policy, I, L)
+# Reward array
+R = np.zeros((2*I + 1, L + 1, L + 1, num_actions))
+for i in range(2*I + 1):
+    for l in range(L + 1):
+        for l_b in range(L + 1):
+            for a in range(num_actions):
+                if a == 1 and i != 0 and l != 0:
+                    R[i, l, l_b, a] = - K + p * (sum(k * arrival_probability(round((I*l_b + i*l)/(I+i)), k) for k in range(I + i))) + arr_greater_than(round((I*l_b + i*l)/(I+i)), I + i - 1) * (I + i) * p
+                elif a == 1 and (i == 0 or l == 0):
+                    R[i, l, l_b, a] = - K + p * (sum(k * arrival_probability(l_b, k) for k in range(I))) + arr_greater_than(l_b, I - 1) * (I) * p
+                else:
+                    R[i, l, l_b, a] = p * (sum(k * arrival_probability(l, k) for k in range(i))) + arr_greater_than(l, i - 1) * i * p
 
-# Function to plot action values
-def plot_action_values(I, L, l_fixed, l_b_fixed, action_values_store):
-    plt.figure(figsize=(8, 6))
+print('Rewards completed')
+
+P = np.zeros((2*I + 1, L + 1, L + 1, num_actions, 2*I + 1, L + 1, L + 1))
+for i in range(2*I + 1):
+    for l in range(L + 1):
+        for l_b in range(L + 1):
+            if l_b <= l and l != 0:
+                continue
+            else:
+                if (i > I and a == 1) or ((i == 0 or l == 0) and a == 0):
+                    P[i, l, l_b, a] = 0  # explicitly no transitions allowed
+                elif i == 0 and l == 0 and l_b == 0:
+                    P[i, l, l_b, 0, i, l, l_b] = 1
+                    P[i, l, l_b, 1, i, l, L] = 1    
+                elif i == 0 and l == 0 and l_b != 0:
+                    P[i, l, l_b, 0, i, l, l_b - 1] = P_b
+                    P[i, l, l_b, 0, i, l, l_b] = 1 - P_b
+                    for k in range(I+1):    
+                        P[i, l, l_b, 1, I - k, l_b - 1, L] = arrival_probability(l_b, k)
+                    P[i, l, l_b, 1, 0, l_b - 1, L] = arr_greater_than(l_b, I - 1)
+                elif i == 0 and l != 0 and l_b != 0:
+                    P[i, l, l_b, 0, i, l - 1, l_b - 1] = P_b
+                    P[i, l, l_b, 0, i, l - 1, l_b] = 1 - P_b
+                    for k in range(I+1):    
+                        P[i, l, l_b, 1, I - k, l_b - 1, L] = arrival_probability(l_b, k)
+                    P[i, l, l_b, 1, 0, l_b - 1, L] = arr_greater_than(l_b, I - 1)
+                elif i != 0 and l == 0 and l_b == 0:
+                    P[i, l, l_b, 0, i, l, l_b] = 1
+                    P[i, l, l_b, 1, I, l_b, L] = 1
+                elif i != 0 and l == 0 and l_b != 0:
+                    P[i, l, l_b, 0, i, l, l_b - 1] = P_b
+                    P[i, l, l_b, 0, i, l, l_b] = 1 - P_b
+                    for k in range(I+1):
+                        P[i, l, l_b, 1, I - k, l_b - 1, L] = arrival_probability(l_b, k)
+                    P[i, l, l_b, 1, 0, l_b - 1, L] = arr_greater_than(l_b, I - 1)
+                elif i <= I:
+                    new_l = round((I*l_b + i*l)/(I+i))
+                    for k in range(I + i + 1):
+                        P[i, l, l_b, 1, I + i - k, new_l - 1, L] = arrival_probability(new_l, k)
+                    P[i, l, l_b, 1, 0, new_l - 1, L] = arr_greater_than(new_l, I + i - 1)
+
+                    for k in range(i+1):
+                        P[i, l, l_b, 0, i - k, l - 1, l_b - 1] = arrival_probability(l, k)*P_b
+                    P[i, l, l_b, 0, 0, l - 1, l_b - 1] = arr_greater_than(l, i - 1)*P_b
+                    
+                    for k in range(i+1):
+                        P[i, l, l_b, 0, i - k, l - 1, l_b] = arrival_probability(l, k)*(1 - P_b)
+                    P[i, l, l_b, 0, 0, l - 1, l_b] = arr_greater_than(l, i - 1)*(1 - P_b)
+                else:
+                    for k in range(i+1):
+                        P[i, l, l_b, 0, i - k, l - 1, l_b - 1] = arrival_probability(l, k)*P_b
+                    P[i, l, l_b, 0, 0, l - 1, l_b - 1] = arr_greater_than(l, i - 1)*P_b
+                    
+                    for k in range(i+1):
+                        P[i, l, l_b, 0, i - k, l - 1, l_b] = arrival_probability(l, k)*(1 - P_b)
+                    P[i, l, l_b, 0, 0, l - 1, l_b] = arr_greater_than(l, i - 1)*(1 - P_b)
+                    
+for i in range(2*I+1):
+    for l in range(L+1):
+        for l_b in range(L+1):
+            if l >= l_b or (i > I):
+                continue
+            else: 
+                for a in range(num_actions):
+                    sum_ = 0
+                    for i_ in range(2*I+1):
+                        for l_ in range(L+1):
+                            for l_b_ in range(L+1):
+                                sum_ = sum_ + P[i, l, l_b, a, i_, l_, l_b_]
+                if abs(sum_ - 1) > epsilon:
+                    print(f'Problem at state {i}, {l}, {l_b} under action {a} probability {sum_}')
+                                
+print('Probabilities completed')                   
     
-    for a in range(num_actions):
-        values = [action_values_store[i, l_fixed, l_b_fixed, a] for i in range(2*I + 1)]
-        plt.plot(range(2*I + 1), values, linestyle='-', label=f"Action {a}")
+V = np.zeros((2*I+1,L+1, L+1))
+V_actions = np.zeros((2*I + 1, L + 1, L + 1 , num_actions))
+
+# Value iteration
+iteration = 0
+while True:
+    V_prev = np.copy(V)
+    iteration += 1
+    for i in range(2*I + 1):
+        for l in range(L + 1):
+            for l_b in range(L + 1):
+                if l >= l_b:
+                    continue
+                else:
+                    for a in range(num_actions):
+                        if ((i == 0 or l == 0) and a == 0): 
+                            V_actions[i, l, l_b, a] = -float('inf')
+                        elif i > I and a == 1 and l != 0:
+                            V_actions[i, l, l_b, a] = -float('inf')
+                        else:
+                            V_actions[i, l, l_b, a] = R[i, l, l_b, a] + gamma * np.sum(P[i, l, l_b, a] * V_prev)
+                    
+    V = np.max(V_actions, axis = 3)
     
-    plt.xlabel("Inventory Level (i)")
-    plt.ylabel("Value")
-    plt.title(f"Value of Each Action (l={l_fixed}, l_b={l_b_fixed})")
-    plt.legend()
-    plt.grid(True)
-    plt.show()
+    if np.max(np.abs(V - V_prev)) < epsilon:
+        print('Value iteration completed at iteration: ', iteration)
+        break
+    
+optimal_policy = np.argmax(V_actions, axis = 3)
+end_time = time.time()
 
-for l in range(L+1):
-    for l_b in range(L+1):
-        l_fixed = l
-        l_b_fixed = l_b
-        plot_action_values(I, L, l_fixed, l_b_fixed, action_values_store)
+stationary_dist = calculate_stationary_distribution(P, optimal_policy, I, L)
+
+optimal_avg_reward = 0
+for i in range(2*I+1):
+    for l in range(L+1):
+        for l_b in range(L+1):
+            if l >= l_b:
+                continue
+            else:
+                optimal_avg_reward += R[i, l, l_b, optimal_policy[i, l, l_b]] * stationary_dist[i, l, l_b]
+
+print(optimal_avg_reward)
+
+total_time = end_time - start_time
+print(f'Iteration took {total_time} seconds')
+
+# plot_optimal_policy(optimal_policy, I, L)
+
+# for l in range(L + 1):
+#     for l_b in range(L + 1):
+#         if l >= l_b:
+#             continue
+        
+#         plt.figure(figsize=(10, 6))
+
+#         i_values = np.arange(2 * I + 1)
+#         action_0_values = V_actions[:, l, l_b, 0]
+#         action_1_values = V_actions[:, l, l_b, 1]
+
+#         plt.plot(i_values, action_0_values, label='Action 0', marker='o')
+#         plt.plot(i_values, action_1_values, label='Action 1', marker='s')
+
+#         plt.xlabel('Inventory Level (i)')
+#         plt.ylabel('Value of Actions')
+#         plt.title(f'V_actions[i, l={l}, l_b={l_b}, a] vs Inventory Level')
+#         plt.legend()
+#         plt.grid(True, linestyle='--', alpha=0.7)
+
+#         plt.tight_layout()
+#         plt.show()
+        
+# for fixed_i in range(2 * I + 1):
+#     for fixed_l in range(L + 1):
+#         l_b_values = np.arange(fixed_l + 1, L + 1)
+#         if len(l_b_values) == 0:
+#             continue  # Skip invalid combinations
+
+#         plt.figure(figsize=(10, 6))
+#         plt.plot(l_b_values, V_actions[fixed_i, fixed_l, fixed_l + 1:, 0],
+#                  label='Action 0', marker='o')
+#         plt.plot(l_b_values, V_actions[fixed_i, fixed_l, fixed_l + 1:, 1],
+#                  label='Action 1', marker='s')
+
+#         plt.xlabel('Shelf Life of Incoming Batch (l_b)')
+#         plt.ylabel('Value of Actions')
+#         plt.title(f'V_actions[i={fixed_i}, l={fixed_l}, l_b, a] vs Incoming Shelf Life (l_b)')
+#         plt.legend()
+#         plt.grid(True)
+#         plt.xticks(l_b_values)
+#         plt.show()
+
+# Version 2: Fixed i and l_b, x-axis is l
+# for fixed_i in range(2 * I + 1):
+#     for fixed_l_b in range(1, L + 1):  # start from 1 since l_b must be at least 1
+#         l_values = np.arange(0, fixed_l_b)
+
+#         if len(l_values) == 0:
+#             continue  # Skip invalid combinations
+
+#         plt.figure(figsize=(10, 6))
+#         plt.plot(l_values, V_actions[fixed_i, :fixed_l_b, fixed_l_b, 0],
+#                  label='Action 0', marker='o')
+#         plt.plot(l_values, V_actions[fixed_i, :fixed_l_b, fixed_l_b, 1],
+#                  label='Action 1', marker='s')
+
+#         plt.xlabel('Shelf Life of Current Inventory (l)')
+#         plt.ylabel('Value of Actions')
+#         plt.title(f'V_actions[i={fixed_i}, l, l_b={fixed_l_b}, a] vs Current Shelf Life (l)')
+#         plt.legend()
+#         plt.grid(True)
+#         plt.xticks(l_values)
+#         plt.show()
 
 
+
+
+                
+                
+                
